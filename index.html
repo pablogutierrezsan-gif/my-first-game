@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alien Tic-Tac-Toe</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { margin-bottom: 0.5rem; }
+  button { font-size: 1rem; padding: 0.6rem 1rem; margin: 0.25rem 0.25rem 0.25rem 0; cursor: pointer; }
+  button:focus-visible { outline: 3px solid #0057d9; outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  table { border-collapse: collapse; margin: 0.75rem 0; }
+  th, td { border: 1px solid #999; padding: 0.3rem 0.8rem; text-align: left; }
+  #status { font-weight: 600; min-height: 1.5em; }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0.75rem 0; }
+  .cell { aspect-ratio: 1; font-size: 2.5rem; font-weight: bold; border: 2px solid #333; background: #fff; color: #000; margin: 0; padding: 0; }
+  .cell:disabled { cursor: not-allowed; }
+  .cell.pending { background: #ffe680; }
+  .cell.win { background: #b8f0b8; }
+  .panel { border: 2px solid #333; border-radius: 6px; padding: 0.75rem 1rem; margin: 0.75rem 0; }
+  .health { display: flex; gap: 2rem; font-weight: 600; }
+  .alien-move { font-size: 1.3rem; font-weight: bold; }
+  .hint { font-size: 0.9rem; color: #555; }
+  .big { font-size: 1.3rem; font-weight: bold; }
+  .bar { border-top: 1px solid #ccc; margin-top: 1rem; padding-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>Alien Tic-Tac-Toe</h1>
+
+  <!-- Instructions (also used as help during play) -->
+  <section id="help">
+    <p><strong>Goal:</strong> get three X in a row before the aliens get three O.</p>
+    <ol>
+      <li>Pick an empty square. A battle starts for that square.</li>
+      <li>The alien attacks. Choose the response that counters it.</li>
+      <li>Win the battle and you place X. Lose it and the alien places O.</li>
+      <li>Three X in a line wins. Three O loses. A full board with no line is a draw.</li>
+    </ol>
+    <table>
+      <tr><th>Alien shows</th><th>Correct response</th></tr>
+      <tr><td>Laser</td><td>Shield</td></tr>
+      <tr><td>Shield</td><td>Blast</td></tr>
+      <tr><td>Claw</td><td>Dodge</td></tr>
+    </table>
+    <p class="hint">Each side starts every battle with 2 health. A correct response costs the alien 1; a wrong one costs you 1.</p>
+    <button id="startBtn">Start</button>
+  </section>
+
+  <!-- Game area -->
+  <section id="play" hidden>
+    <p id="status" aria-live="polite"></p>
+    <div class="board" id="board"></div>
+
+    <div id="battle" class="panel" hidden>
+      <div class="health"><span id="playerHealth"></span><span id="alienHealth"></span></div>
+      <p class="hint" id="exchange"></p>
+      <p class="alien-move" id="alienMove"></p>
+      <div>
+        <button data-response="Shield">Shield</button>
+        <button data-response="Blast">Blast</button>
+        <button data-response="Dodge">Dodge</button>
+      </div>
+      <p id="feedback" aria-live="polite"></p>
+      <button id="nextBtn" hidden>Next exchange</button>
+      <p class="hint">Laser → Shield · Shield → Blast · Claw → Dodge</p>
+    </div>
+
+    <div id="summary" class="panel" hidden>
+      <p id="summaryText" class="big" aria-live="polite"></p>
+      <button id="returnBtn">Return to board</button>
+    </div>
+
+    <div id="result" class="panel" hidden>
+      <p id="battleText"></p>
+      <p id="resultText" class="big" aria-live="polite"></p>
+      <button id="playAgainBtn">Play again</button>
+    </div>
+  </section>
+
+  <!-- Always available during play -->
+  <div id="bar" class="bar" hidden>
+    <button id="helpBtn">How to play</button>
+    <button id="restartBtn">Restart game (clears the whole board)</button>
+  </div>
+
+<script>
+  // ---- Rules ----
+  const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  const MOVES = ['Laser', 'Shield', 'Claw'];
+  const COUNTER = { Laser: 'Shield', Shield: 'Blast', Claw: 'Dodge' };
+  const START_HEALTH = 2;
+
+  // ---- What the game remembers ----
+  let started = false, helpOpen = false;
+  let cells, pending, phase, winLine, battle, feedback, lastBattleText;
+  // phase is one of: 'choose', 'battle', 'summary', 'over'
+
+  const $ = id => document.getElementById(id);
+  const helpSec = $('help'), playSec = $('play'), bar = $('bar');
+  const startBtn = $('startBtn'), helpBtn = $('helpBtn'), restartBtn = $('restartBtn');
+  const statusEl = $('status'), boardEl = $('board');
+  const battleEl = $('battle'), summaryEl = $('summary'), resultEl = $('result');
+  const nextBtn = $('nextBtn'), returnBtn = $('returnBtn'), playAgainBtn = $('playAgainBtn');
+  const responseButtons = document.querySelectorAll('[data-response]');
+
+  // Build the nine squares once
+  const cellButtons = [];
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement('button');
+    b.className = 'cell';
+    b.addEventListener('click', () => choose(i));
+    boardEl.appendChild(b);
+    cellButtons.push(b);
+  }
+
+  function newGame() {
+    cells = Array(9).fill(null);
+    pending = null;
+    phase = 'choose';
+    winLine = null;
+    battle = null;
+    feedback = '';
+    lastBattleText = '';
+  }
+
+  // ---- Actions ----
+  function startOrResume() {
+    if (!started) { started = true; newGame(); }
+    helpOpen = false;
+    render();
+    focusCurrent();
+  }
+
+  function openHelp() {
+    helpOpen = true;
+    render();
+    startBtn.focus();
+  }
+
+  function restartGame() {
+    newGame();
+    helpOpen = false;
+    render();
+    focusFirstCell();
+  }
+
+  function choose(i) {
+    if (helpOpen || phase !== 'choose' || cells[i]) return;
+    pending = i;
+    battle = { player: START_HEALTH, alien: START_HEALTH, exchange: 1, answered: false };
+    feedback = '';
+    phase = 'battle';
+    render();
+    responseButtons[0].focus();
+  }
+
+  function respond(choice) {
+    if (helpOpen || phase !== 'battle' || battle.answered) return;
+    battle.answered = true;
+    const move = MOVES[battle.exchange - 1];
+    if (choice === COUNTER[move]) {
+      battle.alien -= 1;
+      feedback = `${choice} counters ${move}. Alien loses 1 health.`;
+    } else {
+      battle.player -= 1;
+      feedback = `${choice} does not counter ${move} (${COUNTER[move]} does). You lose 1 health.`;
+    }
+    if (battle.alien === 0) endBattle('X');
+    else if (battle.player === 0) endBattle('O');
+    else { render(); nextBtn.focus(); }
+  }
+
+  function nextExchange() {
+    if (helpOpen || phase !== 'battle' || !battle.answered) return;
+    battle.exchange += 1;
+    battle.answered = false;
+    feedback = '';
+    render();
+    responseButtons[0].focus();
+  }
+
+  // Fill the pending square exactly once, then check the board
+  function endBattle(mark) {
+    const square = pending + 1;
+    cells[pending] = mark;
+    pending = null;
+    battle = null;
+    lastBattleText = mark === 'X'
+      ? `${feedback} Battle won! You placed X in square ${square}.`
+      : `${feedback} Battle lost. The alien placed O in square ${square}.`;
+    checkBoard();
+    render();
+    (phase === 'over' ? playAgainBtn : returnBtn).focus();
+  }
+
+  // Lines first, then a full-board draw
+  function checkBoard() {
+    for (const line of LINES) {
+      const [a, b, c] = line;
+      if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) {
+        winLine = line;
+        phase = 'over';
+        return;
+      }
+    }
+    phase = cells.every(Boolean) ? 'over' : 'summary';
+  }
+
+  function returnToBoard() {
+    if (phase !== 'summary') return;
+    phase = 'choose';
+    render();
+    focusFirstCell();
+  }
+
+  function playAgain() {
+    if (phase !== 'over') return;
+    newGame();
+    render();
+    focusFirstCell();
+  }
+
+  // ---- Focus helpers ----
+  function focusFirstCell() { cellButtons.find(b => !b.disabled)?.focus(); }
+  function focusCurrent() {
+    if (phase === 'battle') (battle.answered ? nextBtn : responseButtons[0]).focus();
+    else if (phase === 'summary') returnBtn.focus();
+    else if (phase === 'over') playAgainBtn.focus();
+    else focusFirstCell();
+  }
+
+  // ---- Draw the screen from the current state ----
+  function render() {
+    helpSec.hidden = started && !helpOpen;
+    startBtn.textContent = started ? 'Back to game' : 'Start';
+    playSec.hidden = !started || helpOpen;
+    bar.hidden = !started;
+    helpBtn.hidden = helpOpen;
+    if (!started) return;
+
+    cellButtons.forEach((b, i) => {
+      const mark = cells[i];
+      const row = Math.floor(i / 3) + 1, col = (i % 3) + 1;
+      b.textContent = mark || '';
+      b.classList.toggle('pending', i === pending);
+      b.classList.toggle('win', !!winLine && winLine.includes(i));
+      b.disabled = phase !== 'choose' || !!mark;
+      const state = mark ? mark : (i === pending ? 'battle in progress' : 'empty');
+      b.setAttribute('aria-label', `Row ${row}, column ${col}, ${state}`);
+    });
+
+    statusEl.textContent =
+      phase === 'choose' ? 'Choose an empty square.' :
+      phase === 'battle' ? `Battle for square ${pending + 1}.` :
+      phase === 'summary' ? 'Battle over.' : 'Game over.';
+
+    battleEl.hidden = phase !== 'battle';
+    if (phase === 'battle') {
+      $('playerHealth').textContent = `You: ${battle.player} of ${START_HEALTH}`;
+      $('alienHealth').textContent = `Alien: ${battle.alien} of ${START_HEALTH}`;
+      $('exchange').textContent = `Exchange ${battle.exchange}`;
+      $('alienMove').textContent = `The alien uses ${MOVES[battle.exchange - 1]}!`;
+      responseButtons.forEach(b => { b.disabled = battle.answered; });
+      $('feedback').textContent = feedback;
+      nextBtn.hidden = !battle.answered;
+    }
+
+    summaryEl.hidden = phase !== 'summary';
+    $('summaryText').textContent = lastBattleText;
+
+    resultEl.hidden = phase !== 'over';
+    if (phase === 'over') {
+      $('battleText').textContent = lastBattleText;
+      $('resultText').textContent = winLine
+        ? (cells[winLine[0]] === 'X' ? 'You won!' : 'The aliens won.')
+        : 'Draw.';
+    }
+  }
+
+  // ---- Wire up buttons ----
+  startBtn.addEventListener('click', startOrResume);
+  helpBtn.addEventListener('click', openHelp);
+  restartBtn.addEventListener('click', restartGame);
+  responseButtons.forEach(b => b.addEventListener('click', () => respond(b.dataset.response)));
+  nextBtn.addEventListener('click', nextExchange);
+  returnBtn.addEventListener('click', returnToBoard);
+  playAgainBtn.addEventListener('click', playAgain);
+
+  render();
+</script>
+</body>
+</html>
