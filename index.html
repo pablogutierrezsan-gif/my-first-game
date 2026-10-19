@@ -5,32 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Alien Tic-Tac-Toe</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 1.5rem auto; padding: 0 1rem; }
-  h1 { margin-bottom: 0.5rem; }
-  button { font-size: 1rem; padding: 0.6rem 1rem; margin: 0.25rem 0.25rem 0.25rem 0; cursor: pointer; }
-  button:focus-visible { outline: 3px solid #0057d9; outline-offset: 2px; }
+  :root {
+    --bg: #0b0f2a; --panel: #141a3d; --text: #e8ecff; --muted: #a9b2e0;
+    --x: #4fe3ff; --o: #ff5c8a; --pending: #ffd34d; --good: #5dff9b; --line: #3a4480;
+    --alien: #7dff8a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif; color: var(--text); margin: 0; min-height: 100vh;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(1.5px 1.5px at 10% 15%, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 25% 70%, #fff 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 40% 35%, #cfd8ff 50%, transparent 51%),
+      radial-gradient(1px 1px at 55% 85%, #fff 50%, transparent 51%),
+      radial-gradient(2px 2px at 70% 20%, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 85% 55%, #cfd8ff 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 92% 90%, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 5% 50%, #fff 50%, transparent 51%),
+      radial-gradient(ellipse at 80% 0%, #2a1f5c 0%, transparent 55%);
+    background-attachment: fixed;
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  h1 { margin: 0 0 0.75rem; letter-spacing: 0.03em; text-shadow: 0 0 12px rgba(79, 227, 255, 0.5); }
+  p, li { line-height: 1.45; }
+  button {
+    font-size: 1rem; padding: 0.65rem 1.1rem; margin: 0.25rem 0.25rem 0.25rem 0;
+    background: #2a3370; color: var(--text); border: 2px solid #5b67b8; border-radius: 8px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #36418a; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--pending); outline-offset: 3px; }
   [hidden] { display: none !important; }
   table { border-collapse: collapse; margin: 0.75rem 0; }
-  th, td { border: 1px solid #999; padding: 0.3rem 0.8rem; text-align: left; }
-  #status { font-weight: 600; min-height: 1.5em; }
-  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0.75rem 0; }
-  .cell { aspect-ratio: 1; font-size: 2.5rem; font-weight: bold; border: 2px solid #333; background: #fff; color: #000; margin: 0; padding: 0; }
-  .cell:disabled { cursor: not-allowed; }
-  .cell.pending { background: #ffe680; }
-  .cell.win { background: #b8f0b8; }
-  .panel { border: 2px solid #333; border-radius: 6px; padding: 0.75rem 1rem; margin: 0.75rem 0; }
-  .health { display: flex; gap: 2rem; font-weight: 600; }
-  .alien-move { font-size: 1.3rem; font-weight: bold; }
-  .hint { font-size: 0.9rem; color: #555; }
-  .big { font-size: 1.3rem; font-weight: bold; }
-  .bar { border-top: 1px solid #ccc; margin-top: 1rem; padding-top: 0.5rem; }
+  th, td { border: 1px solid var(--line); padding: 0.35rem 0.9rem; text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  .hint { font-size: 0.9rem; color: var(--muted); }
+  .big { font-size: 1.35rem; font-weight: bold; }
+  .panel { background: var(--panel); border: 2px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; margin: 0.75rem 0; }
+
+  #status { font-weight: 600; min-height: 1.5em; color: var(--muted); }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0.75rem 0; }
+  .cell {
+    aspect-ratio: 1; margin: 0; padding: 0; font-size: 2.8rem; font-weight: 800;
+    background: #10163a; border: 2px solid var(--line); border-radius: 10px; color: var(--text);
+  }
+  .cell:disabled { opacity: 1; }
+  .cell.x { color: var(--x); text-shadow: 0 0 10px var(--x); }
+  .cell.o { color: var(--o); text-shadow: 0 0 10px var(--o); }
+  .cell.pending { border-color: var(--pending); color: var(--pending); box-shadow: 0 0 14px var(--pending); font-size: 2rem; }
+  .cell.win { background: #1c4a36; border-color: var(--good); }
+
+  .battle-top { display: flex; align-items: center; gap: 1rem; }
+  .alien-move { font-size: 1.35rem; font-weight: bold; margin: 0.25rem 0; }
+  .health { display: flex; gap: 1.5rem; flex-wrap: wrap; font-weight: 600; margin: 0.5rem 0; }
+  .track { width: 120px; height: 10px; background: #2a2f55; border-radius: 5px; overflow: hidden; margin-top: 4px; }
+  .fill { height: 100%; transition: width 0.3s; }
+  .fill.you { background: var(--x); }
+  .fill.alien { background: var(--alien); }
+  #feedback { min-height: 1.5em; }
+  .toolbar { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 0.5rem; }
+
+  @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
 </style>
 </head>
 <body>
+<main>
   <h1>Alien Tic-Tac-Toe</h1>
 
   <!-- Instructions (also used as help during play) -->
   <section id="help">
+    <svg viewBox="0 0 100 80" width="80" aria-hidden="true">
+      <line x1="35" y1="22" x2="25" y2="6" stroke="#7dff8a" stroke-width="3"/>
+      <circle cx="25" cy="6" r="4" fill="#7dff8a"/>
+      <line x1="65" y1="22" x2="75" y2="6" stroke="#7dff8a" stroke-width="3"/>
+      <circle cx="75" cy="6" r="4" fill="#7dff8a"/>
+      <ellipse cx="50" cy="46" rx="34" ry="27" fill="#7dff8a"/>
+      <ellipse cx="38" cy="43" rx="8" ry="11" fill="#0b0f2a"/>
+      <ellipse cx="62" cy="43" rx="8" ry="11" fill="#0b0f2a"/>
+      <circle cx="40" cy="39" r="3" fill="#fff"/>
+      <circle cx="64" cy="39" r="3" fill="#fff"/>
+      <path d="M40 61 Q50 68 60 61" stroke="#0b0f2a" stroke-width="3" fill="none"/>
+    </svg>
     <p><strong>Goal:</strong> get three X in a row before the aliens get three O.</p>
     <ol>
       <li>Pick an empty square. A battle starts for that square.</li>
@@ -54,9 +110,28 @@
     <div class="board" id="board"></div>
 
     <div id="battle" class="panel" hidden>
-      <div class="health"><span id="playerHealth"></span><span id="alienHealth"></span></div>
-      <p class="hint" id="exchange"></p>
-      <p class="alien-move" id="alienMove"></p>
+      <div class="battle-top">
+        <svg viewBox="0 0 100 80" width="80" aria-hidden="true">
+          <line x1="35" y1="22" x2="25" y2="6" stroke="#7dff8a" stroke-width="3"/>
+          <circle cx="25" cy="6" r="4" fill="#7dff8a"/>
+          <line x1="65" y1="22" x2="75" y2="6" stroke="#7dff8a" stroke-width="3"/>
+          <circle cx="75" cy="6" r="4" fill="#7dff8a"/>
+          <ellipse cx="50" cy="46" rx="34" ry="27" fill="#7dff8a"/>
+          <ellipse cx="38" cy="43" rx="8" ry="11" fill="#0b0f2a"/>
+          <ellipse cx="62" cy="43" rx="8" ry="11" fill="#0b0f2a"/>
+          <circle cx="40" cy="39" r="3" fill="#fff"/>
+          <circle cx="64" cy="39" r="3" fill="#fff"/>
+          <path d="M40 61 Q50 68 60 61" stroke="#0b0f2a" stroke-width="3" fill="none"/>
+        </svg>
+        <div>
+          <p class="hint" id="exchange"></p>
+          <p class="alien-move" id="alienMove"></p>
+        </div>
+      </div>
+      <div class="health">
+        <div><span id="playerHealth"></span><div class="track"><div id="playerBar" class="fill you"></div></div></div>
+        <div><span id="alienHealth"></span><div class="track"><div id="alienBar" class="fill alien"></div></div></div>
+      </div>
       <div>
         <button data-response="Shield">Shield</button>
         <button data-response="Blast">Blast</button>
@@ -80,10 +155,11 @@
   </section>
 
   <!-- Always available during play -->
-  <div id="bar" class="bar" hidden>
+  <div id="bar" class="toolbar" hidden>
     <button id="helpBtn">How to play</button>
     <button id="restartBtn">Restart game (clears the whole board)</button>
   </div>
+</main>
 
 <script>
   // ---- Rules ----
@@ -243,7 +319,9 @@
     cellButtons.forEach((b, i) => {
       const mark = cells[i];
       const row = Math.floor(i / 3) + 1, col = (i % 3) + 1;
-      b.textContent = mark || '';
+      b.textContent = mark || (i === pending ? '⚔' : '');
+      b.classList.toggle('x', mark === 'X');
+      b.classList.toggle('o', mark === 'O');
       b.classList.toggle('pending', i === pending);
       b.classList.toggle('win', !!winLine && winLine.includes(i));
       b.disabled = phase !== 'choose' || !!mark;
@@ -260,6 +338,8 @@
     if (phase === 'battle') {
       $('playerHealth').textContent = `You: ${battle.player} of ${START_HEALTH}`;
       $('alienHealth').textContent = `Alien: ${battle.alien} of ${START_HEALTH}`;
+      $('playerBar').style.width = `${(battle.player / START_HEALTH) * 100}%`;
+      $('alienBar').style.width = `${(battle.alien / START_HEALTH) * 100}%`;
       $('exchange').textContent = `Exchange ${battle.exchange}`;
       $('alienMove').textContent = `The alien uses ${MOVES[battle.exchange - 1]}!`;
       responseButtons.forEach(b => { b.disabled = battle.answered; });
@@ -274,8 +354,8 @@
     if (phase === 'over') {
       $('battleText').textContent = lastBattleText;
       $('resultText').textContent = winLine
-        ? (cells[winLine[0]] === 'X' ? 'You won!' : 'The aliens won.')
-        : 'Draw.';
+        ? (cells[winLine[0]] === 'X' ? 'You won the board!' : 'The aliens won the board.')
+        : 'Draw. Nobody won the board.';
     }
   }
 
